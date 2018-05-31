@@ -4,6 +4,7 @@
 import socket
 import time
 import threading
+import sys
 from typing import Tuple
 from collections import deque
 from packet import Packet
@@ -11,69 +12,84 @@ from packet import Packet
 
 class Computer(object):
     """xd"""
-
-    def __init__(self, ny_nickname: str,
-                 my_socket_address: Tuple[str, int] = ('localhost', 5000),
-                 next_computer_address: Tuple[str, int] = ('localhost', 6000),
-                 tokenizer: bool=False):
+    
+    def __init__(self, my_id: int):
         """
+        from reading setup file
+        my_socket_address: Tuple[str, int] = ('localhost', 5000),
+        next_computer_address: Tuple[str, int] = ('localhost', 6000),
+        tokenizer: bool=False
+
         It gets a tuple to set where to host the server,
         another tuple to set where to send his packets
         and a boolean to set whether it is the first computer on a network
         (defaults to false because this will only be used once)
         """
-        self.ny_nickname = ny_nickname
-        self.my_socket_address = my_socket_address
+        # read setup file
+        setup = self.read_file(my_id)
+        # find IP, socket from id
+        self.my_id = my_id
+        self.my_socket_address = ""
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(self.my_socket_address)
 
-        self.next_computer_address = next_computer_address
-        self.tokenizer = tokenizer
+        self.next_computer_address = ""
+        self.tokenizer = ""
         self.lock = threading.Lock()
         self.threads = []
+        self.last_time = 0
+        self.visited = False
 
     def start(self):
 
         if self.tokenizer:
             self.pass_token()
 
-        token = threading.Thread(target=self.token_thread())
+        user = threading.Thread(target=self.user_thread)
+        token = threading.Thread(target=self.token_thread)
+        timer = threading.Thread(target=self.time_thread)
+        self.threads.append(user)
         self.threads.append(token)
+        self.threads.append(timer)
+        user.start()
         token.start()
+        timer.start()
         
     def token_thread(self):
         print("Iniciou a thread token:")
-        last_time = 0
-        visited = False
         while True:
-            #iniciar thread para enviar receber token
+            # start thread to receive and send token
             # get packets from socket, cast to str, split(';')
             pckt = self.wait_connection().decode('utf-8').split(';')
+            print("Recebi o token.")
             time.sleep(2)
-            packet = Packet(*pckt)
-            if packet.is_token():
-                print("Recebi o token.")
-                # write file with self.ip
-                file = open("file.txt","w")
-                file.write(str(self.my_socket_address))
-                file.close()
-                self.pass_token()
-                last_time = time.time()
+            # write file with self.ip
+            file = open("file.txt","w")
+            file.write(str(self.my_socket_address))
+            file.close()
+            self.pass_token()
+            self.last_time = time.time()
+            self.visited = True
 
-            # if time > than 10, read file to create new token and ask new IP
-            if visited and time.time() - last_time > 10:
-                file = open("file.txt","w+")
-                text = file.read()
-                if text == str(self.my_socket_address):#see if self was the last to write
-                    print(text)
-                    # ask user to type new ip and socket
-                    # pass new token
-                else:
-                    time.sleep(10)
-                file.close()
+    def time_thread(self):
+        print("iniciou thread time")
+        # if time > than 10, read file to create new token and ask new IP
+        if self.visited and time.time() - self.last_time > 10:
+            file = open("file.txt","w+")
+            text = file.read()
+            if text == str(self.my_socket_address):#see if self was the last to write
+                print(text)
+                # ask user to type new ip and socket
+                # pass new token
+            else:
+                time.sleep(10)
+            file.close()
             
-
-        pass
+    def user_thread(self):
+        print("iniciou thread user")
+        while True:    
+            if input() == "q":
+                sys.exit()
 
     
     def connect(self, text: bytes=b"teste"):
@@ -83,22 +99,23 @@ class Computer(object):
         incoming = self.sock.recv(1024)
         return incoming
 
-    def create_packet(self, dest_nick: str, text: str):
-        return Packet('2345', 'nãocopiado', self.ny_nickname, dest_nick, text)
-
     def pass_token(self):
         print("Sending token to", str(self.next_computer_address))
         self.connect(Packet('1234', 'nãocopiado', '', '', '').to_bytes())
 
+    def read_file(self, my_id: int): #-> list:
+        """
+        id;'ip';socket
+        """
+        with open("setup.txt",'r') as setup_file:
+            # create dictionary
+            for line in setup_file:
+                # split line
+                # fill dictionary with id: tuple (ip,sock)
+                print(line)
+            return ''
+            #return dictionary
 
-def read_file(file_path: str) -> list:
-    """
-    <ip_destino_token>
-    <apelido>
-    <tempo_token>to
-    """
-    with open(file_path) as setup_file:
-        return list(setup_file)
 
 
 """

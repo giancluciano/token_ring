@@ -5,8 +5,6 @@ import socket
 import time
 import threading
 import sys
-from typing import Tuple
-from collections import deque
 from packet import Packet
 
 
@@ -26,38 +24,40 @@ class Computer(object):
         (defaults to false because this will only be used once)
         """
         # read setup file
-        setup = self.read_file(my_id)
+        self.setup = self.read_file()
         # find IP, socket from id
         self.my_id = my_id
-        self.my_socket_address = ""
+        self.my_socket_address = self.setup[my_id]
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(self.my_socket_address)
 
-        self.next_computer_address = ""
-        self.tokenizer = ""
-        self.lock = threading.Lock()
+        
+
+        self.next_computer_address = self.next_pc(self.setup,my_id)
+        self.tokenizer = True if my_id == '01' else False
         self.threads = []
         self.last_time = 0
         self.visited = False
+        self.stop_threads = False
 
     def start(self):
 
         if self.tokenizer:
             self.pass_token()
 
-        user = threading.Thread(target=self.user_thread)
         token = threading.Thread(target=self.token_thread)
         timer = threading.Thread(target=self.time_thread)
-        self.threads.append(user)
+        user = threading.Thread(target=self.user_thread)
         self.threads.append(token)
         self.threads.append(timer)
-        user.start()
+        self.threads.append(user)
         token.start()
         timer.start()
+        user.start()
         
     def token_thread(self):
         print("Iniciou a thread token:")
-        while True:
+        while not self.stop_threads:
             # start thread to receive and send token
             # get packets from socket, cast to str, split(';')
             pckt = self.wait_connection().decode('utf-8').split(';')
@@ -73,26 +73,28 @@ class Computer(object):
 
     def time_thread(self):
         print("iniciou thread time")
-        # if time > than 10, read file to create new token and ask new IP
-        if self.visited and time.time() - self.last_time > 10:
-            file = open("file.txt","w+")
-            text = file.read()
-            if text == str(self.my_socket_address):#see if self was the last to write
-                print(text)
-                # ask user to type new ip and socket
-                # pass new token
-            else:
-                time.sleep(10)
-            file.close()
+        while not self.stop_threads:    
+            # if time > than 10, read file to create new token and ask new IP
+            if self.visited and time.time() - self.last_time > 10:
+                file = open("file.txt","w+")
+                text = file.read()
+                if text == str(self.my_socket_address):#see if self was the last to write
+                    print(text)
+                    # ask user to type new ip and socket
+                    # pass new token
+                else:
+                    time.sleep(10)
+                file.close()
             
     def user_thread(self):
         print("iniciou thread user")
-        while True:    
+        while not self.stop_threads:    
             if input() == "q":
+                self.stop_threads = True
+                time.sleep(1)
                 sys.exit()
-
     
-    def connect(self, text: bytes=b"teste"):
+    def connect(self, text: bytes):
         self.sock.sendto(text, self.next_computer_address)
 
     def wait_connection(self):
@@ -103,18 +105,26 @@ class Computer(object):
         print("Sending token to", str(self.next_computer_address))
         self.connect(Packet('1234', 'nãocopiado', '', '', '').to_bytes())
 
-    def read_file(self, my_id: int): #-> list:
+    def read_file(self):
         """
         id;'ip';socket
         """
         with open("setup.txt",'r') as setup_file:
             # create dictionary
+            computer_list = {}
             for line in setup_file:
                 # split line
-                # fill dictionary with id: tuple (ip,sock)
-                print(line)
-            return ''
+                line_setup = line.split(";")
+                computer_list[line_setup[0]] = (str(line_setup[1]),int(line_setup[2]))
+                # fill dictionary with id: tuple (ip,sock) ('localhost', 5000)
+                print(computer_list)
+            return computer_list
             #return dictionary
+            
+    def next_pc(self, setup, my_id):
+        keys = [*setup]
+        next_id = (keys.index(my_id) + 1) % len(keys)
+        return setup[keys[next_id]]
 
 
 
@@ -135,9 +145,5 @@ from computer import Computer
 pc = Computer('João', ('0.0.0.0', 7000), ('localhost', 5000))
 pc.start()
 
-Done with sending your texts, press Enter to leave a blank destination 
-to start the token thread   
 
 """
-# if __name__ == "__main__":
-    # setup = read_file("")

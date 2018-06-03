@@ -1,2 +1,2 @@
-01;'localhost';5000
-02;'localhost';6000
+01;localhost;5000
+02;localhost;6000
